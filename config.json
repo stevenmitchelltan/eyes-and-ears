@@ -1,6 +1,7 @@
 {
   "repos": [
-    "facebookresearch/sam3"
+    "facebookresearch/sam3",
+    "stevenmitchelltan/vinly"
   ]
 }
 
