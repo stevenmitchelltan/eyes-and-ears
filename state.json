@@ -1,5 +1,8 @@
 {
   "facebookresearch/sam3": {
     "alert_sent": false
+  },
+  "stevenmitchelltan/vinly": {
+    "alert_sent": false
   }
 }
