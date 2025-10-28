@@ -92,6 +92,11 @@ def git_commit_and_push():
         check=True,
     )
 
+    # Pull latest changes before committing
+    repo_url = os.environ["GIT_REMOTE_URL"]
+    subprocess.run(["git", "fetch", repo_url, "main"], check=True)
+    subprocess.run(["git", "rebase", f"{repo_url}/main"], check=True)
+
     # Commit updated state.json
     subprocess.run(["git", "add", "state.json"], check=True)
     subprocess.run(
@@ -100,7 +105,6 @@ def git_commit_and_push():
     )
 
     # Push to main using a tokenized remote URL
-    repo_url = os.environ["GIT_REMOTE_URL"]
     subprocess.run(["git", "push", repo_url, "HEAD:main"], check=True)
 
 def main():
