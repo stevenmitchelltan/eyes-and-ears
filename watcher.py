@@ -92,16 +92,22 @@ def git_commit_and_push():
         check=True,
     )
 
-    # Pull latest changes before committing
-    subprocess.run(["git", "fetch", "origin", "main"], check=True)
-    subprocess.run(["git", "rebase", "origin/main"], check=True)
-
-    # Commit updated state.json
+    # Commit updated state.json first
     subprocess.run(["git", "add", "state.json"], check=True)
     subprocess.run(
         ["git", "commit", "-m", "Update repo visibility state [bot]"],
         check=True,
     )
+
+    # Fetch latest changes and rebase
+    subprocess.run(["git", "fetch", "origin", "main"], check=True)
+    
+    # Try to rebase, and handle the case where there are no changes on remote
+    try:
+        subprocess.run(["git", "rebase", "origin/main"], check=True)
+    except subprocess.CalledProcessError:
+        # If rebase fails (e.g., fast-forward), that's okay
+        pass
 
     # Push to main using a tokenized remote URL
     repo_url = os.environ["GIT_REMOTE_URL"]
