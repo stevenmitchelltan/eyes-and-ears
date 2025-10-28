@@ -1,2 +1,5 @@
-{}
-
+{
+  "facebookresearch/sam3": {
+    "alert_sent": false
+  }
+}
