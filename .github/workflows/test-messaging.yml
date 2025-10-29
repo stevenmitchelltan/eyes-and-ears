@@ -1,0 +1,147 @@
+name: Test messaging integration (TEMPORARY)
+
+# TEMPORARY: This workflow runs every 15 minutes to test messaging.
+# DISABLE THIS AFTER 1 HOUR OF TESTING by deleting this file or commenting out the schedule.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # run every 15 minutes
+  workflow_dispatch: {}      # allow manual trigger
+
+jobs:
+  test-messaging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    concurrency:
+      group: test-messaging
+      cancel-in-progress: true
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Send test message
+        env:
+          SLACK_WEBHOOK_URL_TEST: ${{ secrets.SLACK_WEBHOOK_URL_TEST }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          END_AT: ${{ vars.TEST_MESSAGING_END_AT }}
+        run: |
+          python - <<'PY'
+          import os
+          import time
+          import json
+          import requests
+          from datetime import datetime, timezone
+
+          def parse_end_at(value: str | None):
+              if not value:
+                  return None
+              v = value.strip()
+              try:
+                  # Support both Z and explicit offsets
+                  if v.endswith('Z'):
+                      v = v[:-1] + '+00:00'
+                  # If no timezone provided, assume UTC
+                  if '+' not in v and 'T' in v and len(v) == 19:
+                      v = v + '+00:00'
+                  return datetime.fromisoformat(v)
+              except Exception:
+                  return None
+
+          def now_utc():
+              return datetime.now(timezone.utc)
+
+          def build_payload(timestamp_utc: str) -> dict:
+              repo = os.environ.get('GITHUB_REPOSITORY', 'unknown')
+              ref_name = os.environ.get('GITHUB_REF_NAME', 'unknown')
+              sha = os.environ.get('GITHUB_SHA', 'unknown')
+              run_id = os.environ.get('GITHUB_RUN_ID', '0')
+              run_number = os.environ.get('GITHUB_RUN_NUMBER', '0')
+              attempt = os.environ.get('GITHUB_RUN_ATTEMPT', '1')
+              workflow = os.environ.get('GITHUB_WORKFLOW', 'Test messaging integration (TEMPORARY)')
+              server_url = os.environ.get('GITHUB_SERVER_URL', 'https://github.com')
+              run_url = f"{server_url}/{repo}/actions/runs/{run_id}"
+
+              test_id = f"{run_id}-{attempt}"
+
+              blocks = [
+                  {
+                      "type": "header",
+                      "text": {"type": "plain_text", "text": "TEST: Messaging Integration", "emoji": True},
+                  },
+                  {
+                      "type": "section",
+                      "text": {"type": "mrkdwn", "text": f":white_check_mark: Test message from *{workflow}*"},
+                  },
+                  {
+                      "type": "section",
+                      "fields": [
+                          {"type": "mrkdwn", "text": f"*Repo:*\n{repo}"},
+                          {"type": "mrkdwn", "text": f"*Branch:*\n{ref_name}"},
+                          {"type": "mrkdwn", "text": f"*SHA:*\n{sha[:7]}"},
+                          {"type": "mrkdwn", "text": f"*Run:*\n<{run_url}|#{run_number}>"},
+                          {"type": "mrkdwn", "text": f"*When (UTC):*\n{timestamp_utc}"},
+                          {"type": "mrkdwn", "text": f"*Test ID:*\n{test_id}"},
+                      ],
+                  },
+                  {
+                      "type": "context",
+                      "elements": [
+                          {"type": "mrkdwn", "text": "Temporary test workflow. Disable after validation."}
+                      ],
+                  },
+              ]
+
+              return {
+                  "text": f"TEST: Messaging Integration at {timestamp_utc}",
+                  "blocks": blocks,
+              }
+
+          def post_with_retries(url: str, payload: dict, max_attempts: int = 4, base_sleep: float = 1.0):
+              last_err = None
+              for attempt_idx in range(1, max_attempts + 1):
+                  try:
+                      resp = requests.post(url, json=payload, timeout=10)
+                      # Slack returns 200 OK on success, but capture body for diagnostics
+                      if resp.status_code == 200:
+                          return resp
+                      last_err = RuntimeError(f"Non-200 from Slack: {resp.status_code} body={resp.text[:300]}")
+                  except Exception as e:
+                      last_err = e
+
+                  sleep_s = base_sleep * (2 ** (attempt_idx - 1))
+                  time.sleep(sleep_s)
+              raise last_err if last_err else RuntimeError("Unknown error posting to Slack")
+
+          # Select webhook: prefer test-specific, fallback to general
+          webhook_url = os.environ.get('SLACK_WEBHOOK_URL_TEST') or os.environ.get('SLACK_WEBHOOK_URL')
+          if not webhook_url:
+              raise SystemExit("No Slack webhook configured. Set SLACK_WEBHOOK_URL_TEST or SLACK_WEBHOOK_URL")
+
+          # Optional END_AT guard (ISO8601, e.g., 2025-10-29T12:00:00Z)
+          end_at_env = os.environ.get('END_AT')
+          end_at = parse_end_at(end_at_env)
+          now_str = now_utc().strftime('%Y-%m-%d %H:%M:%S UTC')
+
+          if end_at is not None and now_utc() > end_at:
+              print(f"END_AT reached ({end_at.isoformat()}); skipping send at {now_str}")
+              raise SystemExit(0)
+
+          payload = build_payload(now_str)
+          resp = post_with_retries(webhook_url, payload)
+          print(f"Test message sent successfully at {now_str}; status={resp.status_code}")
+          PY
+      
+      - name: Log timestamp
+        run: |
+          date
+          echo "Test workflow triggered by event ${{ github.event_name }}"
