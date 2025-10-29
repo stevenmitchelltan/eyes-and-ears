@@ -2,7 +2,7 @@ name: Watch repo visibility
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # run every 5 minutes
+    - cron: "0 */6 * * *"   # run every 6 hours
   workflow_dispatch: {}      # allow manual trigger
 
 jobs:
